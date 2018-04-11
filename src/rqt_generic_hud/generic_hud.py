@@ -48,20 +48,39 @@ class GenericHUD(Plugin):
 		# Add widget to the user interface
 		context.add_widget(self._widget)
 
-		#self._widget.tabWidget.children()[0].widget(1).layout.button_update.clicked.connect(self.button_update_pressed)
-		rospy.loginfo((self._widget.tabWidget.__dict__))
-		#self._widget.combo_param_list.currentIndexChanged.connect(self.combo_param_list_pressed)
+		for item in self._widget.tabWidget.widget(0).children():
+			name = item.objectName()
 
-		self.param_topic_name = ""
-		self.param_field_name = ""
+			if(name == "progress_bar_status"):
+				self.progress_bar_status = item
+			elif(name == "label_display"):
+				self.label_display = item
 
-		self.reset_subscribers()
+		for item in self._widget.tabWidget.widget(1).children():
+			name = item.objectName()
+
+			if(name == "button_refresh"):
+				self.button_refresh = item
+			elif(name == "combo_style"):
+				pass
+			elif(name == "combo_topic_list"):
+				self.combo_topic_list = item
+			elif(name == "combo_topic_contents"):
+				self.combo_topic_contents = item
+			elif(name == "textbox_value_max"):
+				self.textbox_value_max = item
+			elif(name == "textbox_value_min"):
+				self.textbox_value_min = item
+
+		self.button_refresh.clicked.connect(self.button_refresh_pressed)
+		self.combo_topic_list.currentIndexChanged.connect(self.combo_topic_list_pressed)
+		self.combo_topic_contents.currentIndexChanged.connect(self.combo_topic_contents_pressed)
+
+		self.sub = None
 
 	def shutdown_plugin(self):
-		if self.binary_sub is not None:
-			self.binary_sub.unregister()
-		if self.deserialized_sub is not None:
-			self.deserialized_sub.unregister()
+		if self.sub is not None:
+			self.sub.unregister()
 
 	def save_settings(self, plugin_settings, instance_settings):
 		# TODO save intrinsic configuration, usually using:
@@ -78,32 +97,44 @@ class GenericHUD(Plugin):
 		# This will enable a setting button (gear icon) in each dock widget title bar
 		# Usually used to open a modal configuration dialog
 
-	def reset_subscribers(self):
-		if self.param_topic_name:
-			self.binary_sub = rospy.Subscriber(self.param_topic_name, rospy.msg.AnyMsg, self.binary_callback)
-		else:
-			self.binary_sub = None
+	def button_refresh_pressed(self):
+		self.combo_topic_list.clear()
+		self.topic_list = rospy.get_published_topics()
 
-		self.deserialized_sub = None
+		self.combo_topic_list.addItem("")
+		for t in self.topic_list:
+			self.combo_topic_list.addItem(t[0])
 
-	def button_config_pressed(self):
-		rospy.loginfo("DEBUG: Safety arm button pressed!")
+		self.combo_topic_contents.clear()
 
-	def binary_callback(self, data):
-		assert sys.version_info >= (2,7) #import_module's syntax needs 2.7
-		connection_header =  data._connection_header["type"].split("/")
+	def combo_topic_list_pressed(self):
+		ind = self.combo_topic_list.currentIndex() - 1
+		connection_header =  self.topic_list[ind][1].split("/")
 		ros_pkg = connection_header[0] + ".msg"
 		msg_type = connection_header[1]
-		#print 'Message type detected as ' + msg_type
 		msg_class = getattr(import_module(ros_pkg), msg_type)
-		self.binary_sub.unregister()
-		self.deserialized_sub = rospy.Subscriber("~/input", msg_class, self.deserialized_callback)
 
-	def deserialized_callback(self, msg_in):
+		self.sub = rospy.Subscriber(self.topic_list[ind][0], msg_class, self.sub_callback)
+
+		self.combo_topic_contents.clear()
+		for s in msg_class.__slots__:
+			self.combo_topic_contents.addItem(s)
+
+	def combo_topic_contents_pressed(self):
+		self.update_display()
+
+	def update_display(self):
 		try:
-			val = int(getattr(msg_in, self.param_field_name))
-			self._widget.progress_bar_status.setValue(val)
-			self._widget.label_display.setText(str(val) + "%")
+			val = int(getattr(self.msg_in, self.combo_topic_contents.currentText()))
+			self.progress_bar_status.setValue(val)
+			self.progress_bar_status.setMinimum(int(self.textbox_value_min.text()))
+			self.progress_bar_status.setMaximum(int(self.textbox_value_max.text()))
+			self.label_display.setText(str(val))
 		except:
 			"Unexpected error:", sys.exc_info()[0]
+
+	def sub_callback(self, msg_in):
+		self.msg_in = msg_in
+		self.update_display()
+
 
