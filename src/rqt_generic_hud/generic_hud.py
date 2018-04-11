@@ -1,7 +1,10 @@
 import os
+import sys
 import math
 import rospkg
 import rospy
+
+from importlib import import_module
 
 from qt_gui.plugin import Plugin
 from python_qt_binding import loadUi
@@ -45,19 +48,19 @@ class GenericHUD(Plugin):
 		# Add widget to the user interface
 		context.add_widget(self._widget)
 
-		self._widget.button_safety_arm.clicked.connect(self.button_safety_arm_pressed)
-		self._widget.button_safety_disarm.clicked.connect(self.button_safety_disarm_pressed)
-		self._widget.button_param_refresh.clicked.connect(self.button_param_refresh_pressed)
-		self._widget.button_param_set.clicked.connect(self.button_param_set_pressed)
-		self._widget.button_update_namespace.clicked.connect(self.button_update_namespace_pressed)
+		self._widget.button_config.clicked.connect(self.button_config_pressed)
+		#self._widget.combo_param_list.currentIndexChanged.connect(self.combo_param_list_pressed)
 
-		self._widget.combo_param_list.currentIndexChanged.connect(self.combo_param_list_pressed)
+		#TODO: remove
+		self.binary_sub = rospy.Subscriber("~/input", rospy.msg.AnyMsg, self.binary_callback)
+		self.deserialized_sub = None
 
-		#mavros.set_namespace("/mavros")
-		self.update_namespace()
+		self.param_field_name = ""
 
 	def shutdown_plugin(self):
-		pass
+		self.binary_sub.unregister()
+		if self.deserialized_sub is not None:
+			self.deserialized_sub.unregister()
 
 	def save_settings(self, plugin_settings, instance_settings):
 		# TODO save intrinsic configuration, usually using:
@@ -74,8 +77,22 @@ class GenericHUD(Plugin):
 		# This will enable a setting button (gear icon) in each dock widget title bar
 		# Usually used to open a modal configuration dialog
 
-	def msg_callback(self, msg_in):
+	def button_config_pressed(self):
 		rospy.loginfo("DEBUG: Safety arm button pressed!")
 
+	def binary_callback(self, data):
+		assert sys.version_info >= (2,7) #import_module's syntax needs 2.7
+		connection_header =  data._connection_header["type"].split("/")
+		ros_pkg = connection_header[0] + ".msg"
+		msg_type = connection_header[1]
+		#print 'Message type detected as ' + msg_type
+		msg_class = getattr(import_module(ros_pkg), msg_type)
+		self.binary_sub.unregister()
+		self.deserialized_sub = rospy.Subscriber("~/input", msg_class, self.deserialized_callback)
 
+	def deserialized_callback(self, msg_in):
+		try:
+			self._widget.progress_bar_status.setValue(int(getattr(msg_in, self.param_field_name)))
+		except:
+			"Unexpected error:", sys.exc_info()[0]
 
