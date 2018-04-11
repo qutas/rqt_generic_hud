@@ -77,6 +77,7 @@ class GenericHUD(Plugin):
 		self.combo_topic_contents.currentIndexChanged.connect(self.combo_topic_contents_pressed)
 
 		self.sub = None
+		self.msg_in = None
 
 	def shutdown_plugin(self):
 		if self.sub is not None:
@@ -96,11 +97,15 @@ class GenericHUD(Plugin):
 		# Comment in to signal that the plugin has a way to configure
 		# This will enable a setting button (gear icon) in each dock widget title bar
 		# Usually used to open a modal configuration dialog
+	def getKey(self,item):
+		return item[0]
 
 	def button_refresh_pressed(self):
-		self.combo_topic_list.clear()
-		self.topic_list = rospy.get_published_topics()
+		self.msg_in = None
 
+		self.topic_list = sorted(rospy.get_published_topics(), key=self.getKey)
+
+		self.combo_topic_list.clear()
 		self.combo_topic_list.addItem("")
 		for t in self.topic_list:
 			self.combo_topic_list.addItem(t[0])
@@ -108,6 +113,8 @@ class GenericHUD(Plugin):
 		self.combo_topic_contents.clear()
 
 	def combo_topic_list_pressed(self):
+		self.msg_in = None
+
 		ind = self.combo_topic_list.currentIndex() - 1
 		connection_header =  self.topic_list[ind][1].split("/")
 		ros_pkg = connection_header[0] + ".msg"
@@ -124,14 +131,20 @@ class GenericHUD(Plugin):
 		self.update_display()
 
 	def update_display(self):
-		try:
-			val = int(getattr(self.msg_in, self.combo_topic_contents.currentText()))
-			self.progress_bar_status.setValue(val)
-			self.progress_bar_status.setMinimum(int(self.textbox_value_min.text()))
-			self.progress_bar_status.setMaximum(int(self.textbox_value_max.text()))
-			self.label_display.setText(str(val))
-		except:
-			"Unexpected error:", sys.exc_info()[0]
+		if self.msg_in is not None:
+			try:
+				val = float(getattr(self.msg_in, self.combo_topic_contents.currentText()))
+				val_min = float(self.textbox_value_min.text());
+				val_max = float(self.textbox_value_max.text());
+				val_norm = (val - val_min) / (val_max - val_min)
+				val_percent = int(100*val_norm)
+
+				self.progress_bar_status.setValue(val_percent)
+				self.label_display.setText(str(val_percent))
+			except AttributeError:
+				pass
+			except TypeError:
+				pass
 
 	def sub_callback(self, msg_in):
 		self.msg_in = msg_in
