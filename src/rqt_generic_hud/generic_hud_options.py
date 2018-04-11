@@ -10,9 +10,9 @@ from qt_gui.plugin import Plugin
 from python_qt_binding import loadUi
 from python_qt_binding.QtWidgets import QWidget
 
-class GenericHUD(Plugin):
+class GenericHUDOptions(Plugin):
 	def __init__(self, context):
-		super(GenericHUD, self).__init__(context)
+		super(GenericHUDOptions, self).__init__(context)
 		# Give QObjects reasonable names
 		self.setObjectName('GenericHUD')
 		rp = rospkg.RosPack()
@@ -48,8 +48,7 @@ class GenericHUD(Plugin):
 		# Add widget to the user interface
 		context.add_widget(self._widget)
 
-		#self._widget.tabWidget.children()[0].widget(1).layout.button_update.clicked.connect(self.button_update_pressed)
-		rospy.loginfo((self._widget.tabWidget.__dict__))
+		self._widget.tabWidget.Config.button_update.clicked.connect(self.button_update_pressed)
 		#self._widget.combo_param_list.currentIndexChanged.connect(self.combo_param_list_pressed)
 
 		self.param_topic_name = ""
