@@ -1,0 +1,20 @@
+<library path="src">
+  <class name="Generic HUD" type="rqt_generic_hud.generic_hud.GenericHUD" base_class_type="rqt_gui_py::Plugin">
+    <description>
+      A generic HUD to assist in quickly viewing specific message contents
+    </description>
+    <qtgui>
+      <!-- optional grouping...
+      <group>
+        <label>Group</label>
+      </group>
+      <group>
+        <label>Subgroup</label>
+      </group>
+      -->
+      <label>Generic HUD</label>
+      <icon type="theme">system-help</icon>
+      <statustip>Heads up display for message data</statustip>
+    </qtgui>
+  </class>
+</library>
