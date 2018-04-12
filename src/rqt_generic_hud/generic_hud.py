@@ -8,11 +8,14 @@ from importlib import import_module
 
 from qt_gui.plugin import Plugin
 from python_qt_binding import loadUi
+from python_qt_binding.QtCore import Signal
 from python_qt_binding.QtWidgets import QWidget
 
 from rqt_generic_hud.generic_hud_options import SimpleSettingsDialog
 
 class GenericHUD(Plugin):
+	_draw = Signal()
+
 	def __init__(self, context):
 		super(GenericHUD, self).__init__(context)
 		# Give QObjects reasonable names
@@ -50,55 +53,36 @@ class GenericHUD(Plugin):
 		# Add widget to the user interface
 		context.add_widget(self._widget)
 
-		#for item in self._widget.tabWidget.widget(0).children():
-		#	name = item.objectName()
-
-		#	if(name == "progress_bar_status"):
-		#		self.progress_bar_status = item
-		#	elif(name == "label_display"):
-		#		self.label_display = item
-
-		#for item in self._widget.tabWidget.widget(1).children():
-		#	name = item.objectName()
-		#
-		#	if(name == "button_refresh"):
-		#		self.button_refresh = item
-		#	elif(name == "combo_style"):
-		#		pass
-		#	elif(name == "combo_topic_list"):
-		#		self.combo_topic_list = item
-		#	elif(name == "combo_topic_contents"):
-		#		self.combo_topic_contents = item
-		#	elif(name == "textbox_value_max"):
-		#		self.textbox_value_max = item
-		#	elif(name == "textbox_value_min"):
-		#		self.textbox_value_min = item
-
-		#self.button_refresh.clicked.connect(self.button_refresh_pressed)
-		#self.combo_topic_list.currentIndexChanged.connect(self.combo_topic_list_pressed)
-		#self.combo_topic_contents.currentIndexChanged.connect(self.combo_topic_contents_pressed)
-
 		self.sub = None
-
 		self.topic_name = ""
 		self.topic_type = ""
 		self.topic_content = ""
 		self.val_min = 0.0
 		self.val_max = 1.0
+		self.val_percent = 0.0
+
+		self._draw.connect(self.update_display)
 
 	def shutdown_plugin(self):
 		if self.sub is not None:
 			self.sub.unregister()
 
 	def save_settings(self, plugin_settings, instance_settings):
-		# TODO save intrinsic configuration, usually using:
-		# instance_settings.set_value(k, v)
-		pass
+		instance_settings.set_value("topic_name", self.topic_name)
+		instance_settings.set_value("topic_type", self.topic_type)
+		instance_settings.set_value("topic_content", self.topic_content)
+		instance_settings.set_value("val_min", self.val_min)
+		instance_settings.set_value("val_max", self.val_max)
 
 	def restore_settings(self, plugin_settings, instance_settings):
-		# TODO restore intrinsic configuration, usually using:
-		# v = instance_settings.value(k)
-		pass
+		self.topic_name = instance_settings.value("topic_name")
+		self.topic_type = instance_settings.value("topic_type")
+		self.topic_content = instance_settings.value("topic_content")
+		self.val_min = float(instance_settings.value("val_min"))
+		self.val_max = float(instance_settings.value("val_max"))
+
+		if self.topic_name and self.topic_type and self.topic_content:
+			self.sub = rospy.Subscriber(self.topic_name, self.get_topic_class_from_type(self.topic_type), self.sub_callback)
 
 	def trigger_configuration(self):
 		self.open_settings_dialog()
@@ -106,31 +90,42 @@ class GenericHUD(Plugin):
 	def getKey(self,item):
 		return item[0]
 
-	def get_topic_type(self, name):
-		topics = sorted(rospy.get_published_topics(), key=self.getKey)
-
-		topic_names, topic_types = zip(*topics)
-		ind = topic_names.index(name)
-
-		connection_header = topic_types[ind].split("/")
+	def get_topic_class_from_type(self, msg_type):
+		connection_header = msg_type.split("/")
 		ros_pkg = connection_header[0] + ".msg"
 		msg_type = connection_header[1]
+
 		msg_class = getattr(import_module(ros_pkg), msg_type)
 
 		return msg_class
 
+	def get_topic_type(self, name):
+		topics = sorted(rospy.get_published_topics(), key=self.getKey)
+		topic_names, topic_types = zip(*topics)
+		topic_type = topic_types[topic_names.index(name)]
+
+		msg_class = self.get_topic_class_from_type(topic_type)
+
+		return topic_type, msg_class
+
 	def sub_callback(self, msg_in):
+		val = 0.0
+
 		try:
 			val = float(getattr(msg_in, self.topic_content))
-			val_norm = (val - self.val_min) / (self.val_max - self.val_min)
-			val_percent = int(100*val_norm)
+		except AttributeError as e:
+			rospy.logerror(e)
+		except TypeError as e:
+			rospy.logerror(e)
 
-			self._widget.progress_bar_status.setValue(val_percent)
-			self._widget.label_display.setText(str(val_percent) + "%")
-		except AttributeError:
-			pass
-		except TypeError:
-			pass
+		val_norm = (val - self.val_min) / (self.val_max - self.val_min)
+		self.val_percent = int(100*val_norm)
+
+		self._draw.emit()
+
+	def update_display(self):
+		self._widget.progress_bar_status.setValue(self.val_percent)
+		self._widget.label_display.setText(str(self.val_percent) + "%")
 
 	def open_settings_dialog(self):
 		"""Present the user with a dialog for choosing the topic to view,
@@ -159,6 +154,8 @@ class GenericHUD(Plugin):
 					self.val_max = float(s[1])
 
 			if self.topic_name and self.topic_content:
-				self.topic_type = self.get_topic_type(self.topic_name)
-				self.sub = rospy.Subscriber(self.topic_name, self.topic_type, self.sub_callback)
+				self.topic_type, msg_class = self.get_topic_type(self.topic_name)
+				self.sub = rospy.Subscriber(self.topic_name, msg_class, self.sub_callback)
+
+		self._draw.emit()
 
