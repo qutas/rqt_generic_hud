@@ -126,7 +126,7 @@ class GenericHUD(Plugin):
 			val_percent = int(100*val_norm)
 
 			self._widget.progress_bar_status.setValue(val_percent)
-			self._widget.label_display.setText(str(val_percent))
+			self._widget.label_display.setText(str(val_percent) + "%")
 		except AttributeError:
 			pass
 		except TypeError:
