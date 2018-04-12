@@ -1,108 +1,120 @@
 import os
-import sys
-import math
+
 import rospkg
 import rospy
-
 from importlib import import_module
 
-from qt_gui.plugin import Plugin
 from python_qt_binding import loadUi
-from python_qt_binding.QtWidgets import QWidget
+from python_qt_binding.QtCore import qWarning
+from python_qt_binding.QtWidgets import QDialog, QLabel, QLineEdit, QComboBox
+from rospkg.rospack import RosPack
 
-class GenericHUDOptions(Plugin):
-	def __init__(self, context):
-		super(GenericHUDOptions, self).__init__(context)
-		# Give QObjects reasonable names
-		self.setObjectName('GenericHUD')
-		rp = rospkg.RosPack()
+class SimpleSettingsDialog(QDialog):
+	"""Simple dialog that can show multiple settings groups and returns their combined results."""
 
-		# Process standalone plugin command-line arguments
-		#from argparse import ArgumentParser
-		#parser = ArgumentParser()
-		# Add argument(s) to the parser.
-		#parser.add_argument("-q", "--quiet", action="store_true",
-		#              dest="quiet",
-		#              help="Put plugin in silent mode")
-		#args, unknowns = parser.parse_known_args(context.argv())
-		#if not args.quiet:
-		#    print 'arguments: ', args
-		#    print 'unknowns: ', unknowns
+	def __init__(self, title='Options', description=None):
+		super(SimpleSettingsDialog, self).__init__()
+		self.setObjectName('SimpleSettingsDialog')
 
-		# Create QWidget
-		self._widget = QWidget()
-		# Get path to UI file which is a sibling of this file
-		# in this example the .ui and .py file are in the same folder
-		ui_file = os.path.join(rp.get_path('rqt_generic_hud'), 'resource', 'GenericHUD.ui')
-		# Extend the widget with all attributes and children from UI file
-		loadUi(ui_file, self._widget)
-		# Give QObjects reasonable names
-		self._widget.setObjectName('GenericHUD')
-		# Show _widget.windowTitle on left-top of each plugin (when
-		# it's set in _widget). This is useful when you open multiple
-		# plugins at once. Also if you open multiple instances of your
-		# plugin at once, these lines add number to make it easy to
-		# tell from pane to pane.
-		if context.serial_number() > 1:
-			self._widget.setWindowTitle(self._widget.windowTitle() + (' (%d)' % context.serial_number()))
-		# Add widget to the user interface
-		context.add_widget(self._widget)
+		rp = RosPack()
+		ui_file = os.path.join(rp.get_path('rqt_generic_hud'), 'resource', 'GenericHUDOptions.ui')
+		loadUi(ui_file, self)
 
-		self._widget.tabWidget.Config.button_update.clicked.connect(self.button_update_pressed)
-		#self._widget.combo_param_list.currentIndexChanged.connect(self.combo_param_list_pressed)
+		self.setWindowTitle(title)
 
-		self.param_topic_name = ""
-		self.param_field_name = ""
+		if description is not None:
+			self.add_label(description)
 
-		self.reset_subscribers()
+	def add_label(self, text):
+		self.group_area.layout().addWidget(QLabel(text))
 
-	def shutdown_plugin(self):
-		if self.binary_sub is not None:
-			self.binary_sub.unregister()
-		if self.deserialized_sub is not None:
-			self.deserialized_sub.unregister()
+	def add_lineedit(self, name, text, title=""):
+		if title:
+			self.add_label(title)
 
-	def save_settings(self, plugin_settings, instance_settings):
-		# TODO save intrinsic configuration, usually using:
-		# instance_settings.set_value(k, v)
-		pass
+		line = QLineEdit(text)
+		line.setObjectName(name)
 
-	def restore_settings(self, plugin_settings, instance_settings):
-		# TODO restore intrinsic configuration, usually using:
-		# v = instance_settings.value(k)
-		pass
+		self.group_area.layout().addWidget(line)
 
-	#def trigger_configuration(self):
-		# Comment in to signal that the plugin has a way to configure
-		# This will enable a setting button (gear icon) in each dock widget title bar
-		# Usually used to open a modal configuration dialog
+	def add_combobox(self, name, options, title="", on_change=None):
+		if title:
+			self.add_label(title)
 
-	def reset_subscribers(self):
-		if self.param_topic_name:
-			self.binary_sub = rospy.Subscriber(self.param_topic_name, rospy.msg.AnyMsg, self.binary_callback)
-		else:
-			self.binary_sub = None
+		combo = QComboBox()
+		combo.setObjectName(name)
 
-		self.deserialized_sub = None
+		for op in options:
+			combo.addItem(op)
 
-	def button_config_pressed(self):
-		rospy.loginfo("DEBUG: Safety arm button pressed!")
+		if on_change is not None:
+			combo.currentIndexChanged.connect(on_change)
 
-	def binary_callback(self, data):
-		assert sys.version_info >= (2,7) #import_module's syntax needs 2.7
-		connection_header =  data._connection_header["type"].split("/")
-		ros_pkg = connection_header[0] + ".msg"
-		msg_type = connection_header[1]
-		#print 'Message type detected as ' + msg_type
-		msg_class = getattr(import_module(ros_pkg), msg_type)
-		self.binary_sub.unregister()
-		self.deserialized_sub = rospy.Subscriber("~/input", msg_class, self.deserialized_callback)
+		self.group_area.layout().addWidget(combo)
 
-	def deserialized_callback(self, msg_in):
-		try:
-			val = int(getattr(msg_in, self.param_field_name))
-			self._widget.progress_bar_status.setValue(val)
-			self._widget.label_display.setText(str(val) + "%")
-		except:
-			"Unexpected error:", sys.exc_info()[0]
+	def add_combobox_empty(self, name, title):
+		if title:
+			self.add_label(title)
 
+		combo = QComboBox()
+		combo.setObjectName(name)
+
+		self.group_area.layout().addWidget(combo)
+		self.empty_combo = combo
+
+	def getKey(self,item):
+		return item[0]
+
+	def add_topic_list(self, name, title):
+		topics = sorted(rospy.get_published_topics(), key=self.getKey)
+
+		self.topics = [["",""]]
+		for t in topics:
+			self.topics.append(t)
+
+		topic_names = []
+		for t in self.topics:
+			topic_names.append(t[0])
+
+		self.add_combobox(name, topic_names, title, self.topic_selected)
+
+	def topic_selected(self, ind):
+		if ind is not 0:
+			#rospy.loginfo(self.topics[ind])
+			connection_header =  self.topics[ind][1].split("/")
+			ros_pkg = connection_header[0] + ".msg"
+			msg_type = connection_header[1]
+			msg_class = getattr(import_module(ros_pkg), msg_type)
+
+			self.empty_combo.clear()
+			for s in msg_class.__slots__:
+				self.empty_combo.addItem(s)
+
+	def get_settings(self):
+		"""Returns the combined settings from all settings groups as a list."""
+
+		if self.exec_() == QDialog.Accepted:
+			results = [["",""]]
+
+			for item in self.group_area.children():
+				name = item.objectName()
+
+				if type(item) is QComboBox:
+					r = [name, item.currentText()]
+
+					if results is None:
+						results = [r]
+					else:
+						results.append(r)
+				elif type(item) is QLineEdit:
+					r = [name, item.text()]
+
+					if results is None:
+						results = [r]
+					else:
+						results.append(r)
+
+			del results[0]
+
+			return results
+		return None

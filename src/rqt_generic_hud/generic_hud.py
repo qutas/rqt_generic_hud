@@ -10,6 +10,8 @@ from qt_gui.plugin import Plugin
 from python_qt_binding import loadUi
 from python_qt_binding.QtWidgets import QWidget
 
+from rqt_generic_hud.generic_hud_options import SimpleSettingsDialog
+
 class GenericHUD(Plugin):
 	def __init__(self, context):
 		super(GenericHUD, self).__init__(context)
@@ -48,36 +50,41 @@ class GenericHUD(Plugin):
 		# Add widget to the user interface
 		context.add_widget(self._widget)
 
-		for item in self._widget.tabWidget.widget(0).children():
-			name = item.objectName()
+		#for item in self._widget.tabWidget.widget(0).children():
+		#	name = item.objectName()
 
-			if(name == "progress_bar_status"):
-				self.progress_bar_status = item
-			elif(name == "label_display"):
-				self.label_display = item
+		#	if(name == "progress_bar_status"):
+		#		self.progress_bar_status = item
+		#	elif(name == "label_display"):
+		#		self.label_display = item
 
-		for item in self._widget.tabWidget.widget(1).children():
-			name = item.objectName()
+		#for item in self._widget.tabWidget.widget(1).children():
+		#	name = item.objectName()
+		#
+		#	if(name == "button_refresh"):
+		#		self.button_refresh = item
+		#	elif(name == "combo_style"):
+		#		pass
+		#	elif(name == "combo_topic_list"):
+		#		self.combo_topic_list = item
+		#	elif(name == "combo_topic_contents"):
+		#		self.combo_topic_contents = item
+		#	elif(name == "textbox_value_max"):
+		#		self.textbox_value_max = item
+		#	elif(name == "textbox_value_min"):
+		#		self.textbox_value_min = item
 
-			if(name == "button_refresh"):
-				self.button_refresh = item
-			elif(name == "combo_style"):
-				pass
-			elif(name == "combo_topic_list"):
-				self.combo_topic_list = item
-			elif(name == "combo_topic_contents"):
-				self.combo_topic_contents = item
-			elif(name == "textbox_value_max"):
-				self.textbox_value_max = item
-			elif(name == "textbox_value_min"):
-				self.textbox_value_min = item
-
-		self.button_refresh.clicked.connect(self.button_refresh_pressed)
-		self.combo_topic_list.currentIndexChanged.connect(self.combo_topic_list_pressed)
-		self.combo_topic_contents.currentIndexChanged.connect(self.combo_topic_contents_pressed)
+		#self.button_refresh.clicked.connect(self.button_refresh_pressed)
+		#self.combo_topic_list.currentIndexChanged.connect(self.combo_topic_list_pressed)
+		#self.combo_topic_contents.currentIndexChanged.connect(self.combo_topic_contents_pressed)
 
 		self.sub = None
-		self.msg_in = None
+
+		self.topic_name = ""
+		self.topic_type = ""
+		self.topic_content = ""
+		self.val_min = 0.0
+		self.val_max = 1.0
 
 	def shutdown_plugin(self):
 		if self.sub is not None:
@@ -93,61 +100,65 @@ class GenericHUD(Plugin):
 		# v = instance_settings.value(k)
 		pass
 
-	#def trigger_configuration(self):
-		# Comment in to signal that the plugin has a way to configure
-		# This will enable a setting button (gear icon) in each dock widget title bar
-		# Usually used to open a modal configuration dialog
+	def trigger_configuration(self):
+		self.open_settings_dialog()
+
 	def getKey(self,item):
 		return item[0]
 
-	def button_refresh_pressed(self):
-		self.msg_in = None
+	def get_topic_type(self, name):
+		topics = sorted(rospy.get_published_topics(), key=self.getKey)
 
-		self.topic_list = sorted(rospy.get_published_topics(), key=self.getKey)
+		topic_names, topic_types = zip(*topics)
+		ind = topic_names.index(name)
 
-		self.combo_topic_list.clear()
-		self.combo_topic_list.addItem("")
-		for t in self.topic_list:
-			self.combo_topic_list.addItem(t[0])
-
-		self.combo_topic_contents.clear()
-
-	def combo_topic_list_pressed(self):
-		self.msg_in = None
-
-		ind = self.combo_topic_list.currentIndex() - 1
-		connection_header =  self.topic_list[ind][1].split("/")
+		connection_header = topic_types[ind].split("/")
 		ros_pkg = connection_header[0] + ".msg"
 		msg_type = connection_header[1]
 		msg_class = getattr(import_module(ros_pkg), msg_type)
 
-		self.sub = rospy.Subscriber(self.topic_list[ind][0], msg_class, self.sub_callback)
-
-		self.combo_topic_contents.clear()
-		for s in msg_class.__slots__:
-			self.combo_topic_contents.addItem(s)
-
-	def combo_topic_contents_pressed(self):
-		self.update_display()
-
-	def update_display(self):
-		if self.msg_in is not None:
-			try:
-				val = float(getattr(self.msg_in, self.combo_topic_contents.currentText()))
-				val_min = float(self.textbox_value_min.text());
-				val_max = float(self.textbox_value_max.text());
-				val_norm = (val - val_min) / (val_max - val_min)
-				val_percent = int(100*val_norm)
-
-				self.progress_bar_status.setValue(val_percent)
-				self.label_display.setText(str(val_percent))
-			except AttributeError:
-				pass
-			except TypeError:
-				pass
+		return msg_class
 
 	def sub_callback(self, msg_in):
-		self.msg_in = msg_in
-		self.update_display()
+		try:
+			val = float(getattr(msg_in, self.topic_content))
+			val_norm = (val - self.val_min) / (self.val_max - self.val_min)
+			val_percent = int(100*val_norm)
 
+			self._widget.progress_bar_status.setValue(val_percent)
+			self._widget.label_display.setText(str(val_percent))
+		except AttributeError:
+			pass
+		except TypeError:
+			pass
+
+	def open_settings_dialog(self):
+		"""Present the user with a dialog for choosing the topic to view,
+		the data type, and other settings used to generate the HUD.
+		This displays a SimpleSettingsDialog asking the user to choose
+		the settings as desired.
+
+		This method is blocking"""
+
+		dialog = SimpleSettingsDialog(title='HUD Options')
+		dialog.add_topic_list("topic_list", "Topics")
+		dialog.add_combobox_empty("content_list", "Contents")
+		dialog.add_lineedit("val_min", "0.0", "Minimum")
+		dialog.add_lineedit("val_max", "1.0", "Maximum")
+
+		settings = dialog.get_settings();
+		if settings is not None:
+			for s in settings:
+				if s[0] == "topic_list":
+					self.topic_name = str(s[1])
+				elif s[0] == "content_list":
+					self.topic_content = str(s[1])
+				elif s[0] == "val_min":
+					self.val_min = float(s[1])
+				elif s[0] == "val_max":
+					self.val_max = float(s[1])
+
+			if self.topic_name and self.topic_content:
+				self.topic_type = self.get_topic_type(self.topic_name)
+				self.sub = rospy.Subscriber(self.topic_name, self.topic_type, self.sub_callback)
 
