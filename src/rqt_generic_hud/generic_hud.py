@@ -114,9 +114,9 @@ class GenericHUD(Plugin):
 		try:
 			val = float(getattr(msg_in, self.topic_content))
 		except AttributeError as e:
-			rospy.logerror(e)
+			rospy.logerr(e)
 		except TypeError as e:
-			rospy.logerror(e)
+			rospy.logerr(e)
 
 		val_norm = (val - self.val_min) / (self.val_max - self.val_min)
 		self.val_percent = int(100*val_norm)
