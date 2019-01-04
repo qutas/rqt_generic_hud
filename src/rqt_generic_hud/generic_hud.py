@@ -8,7 +8,7 @@ from importlib import import_module
 
 from qt_gui.plugin import Plugin
 from python_qt_binding import loadUi
-from python_qt_binding.QtCore import Signal
+from python_qt_binding.QtCore import Signal, Qt
 from python_qt_binding.QtWidgets import QWidget
 
 from rqt_generic_hud.generic_hud_options import SimpleSettingsDialog
@@ -60,6 +60,7 @@ class GenericHUD(Plugin):
 		self.val_min = 0.0
 		self.val_max = 1.0
 		self.val_percent = 0.0
+		self.display_mode = "Vertical"
 
 		self._draw.connect(self.update_display)
 
@@ -73,13 +74,20 @@ class GenericHUD(Plugin):
 		instance_settings.set_value("topic_content", self.topic_content)
 		instance_settings.set_value("val_min", self.val_min)
 		instance_settings.set_value("val_max", self.val_max)
+		instance_settings.set_value("display_mode", self.display_mode)
 
 	def restore_settings(self, plugin_settings, instance_settings):
 		self.topic_name = instance_settings.value("topic_name")
 		self.topic_type = instance_settings.value("topic_type")
 		self.topic_content = instance_settings.value("topic_content")
-		self.val_min = float(instance_settings.value("val_min"))
-		self.val_max = float(instance_settings.value("val_max"))
+		try:
+			self.val_min = float(instance_settings.value("val_min"))
+			self.val_max = float(instance_settings.value("val_max"))
+		except TypeError:
+			self.val_min = 0.0
+			self.val_max = 1.0
+
+		self.set_display_mode(str(instance_settings.value("display_mode")))
 
 		if self.topic_name and self.topic_type and self.topic_content:
 			self.sub = rospy.Subscriber(self.topic_name, self.get_topic_class_from_type(self.topic_type), self.sub_callback)
@@ -114,9 +122,11 @@ class GenericHUD(Plugin):
 		try:
 			val = float(getattr(msg_in, self.topic_content))
 		except AttributeError as e:
-			rospy.logerr(e)
+			rospy.logwarn("AttributeError: " + "e")
+			self.sub.unregister()
 		except TypeError as e:
-			rospy.logerr(e)
+			rospy.logwarn("Unable to display " + str(getattr(msg_in, self.topic_content).__class__.__name__) + " as a percentage")
+			self.sub.unregister()
 
 		val_norm = (val - self.val_min) / (self.val_max - self.val_min)
 		self.val_percent = int(100*val_norm)
@@ -136,10 +146,11 @@ class GenericHUD(Plugin):
 		This method is blocking"""
 
 		dialog = SimpleSettingsDialog(title='HUD Options')
-		dialog.add_topic_list("topic_list", "Topics")
-		dialog.add_combobox_empty("content_list", "Contents")
-		dialog.add_lineedit("val_min", "0.0", "Minimum")
-		dialog.add_lineedit("val_max", "1.0", "Maximum")
+		dialog.add_topic_list("topic_list", str(self.topic_name), "Topics")
+		dialog.add_combobox_empty("content_list", "Contents", self.topic_content)
+		dialog.add_lineedit("val_min", str(self.val_min), "Minimum")
+		dialog.add_lineedit("val_max", str(self.val_max), "Maximum")
+		dialog.add_combobox("display_mode", ['Vertical', 'Horizontal'], self.display_mode, "Orientation")
 
 		settings = dialog.get_settings();
 		if settings is not None:
@@ -152,6 +163,8 @@ class GenericHUD(Plugin):
 					self.val_min = float(s[1])
 				elif s[0] == "val_max":
 					self.val_max = float(s[1])
+				elif s[0] == "display_mode":
+					self.set_display_mode(s[1])
 
 			if self.topic_name and self.topic_content:
 				self.topic_type, msg_class = self.get_topic_type(self.topic_name)
@@ -159,3 +172,10 @@ class GenericHUD(Plugin):
 
 		self._draw.emit()
 
+	def set_display_mode(self, mode):
+		if(mode == 'Horizontal'):
+			self.display_mode = 'Horizontal'
+			self._widget.progress_bar_status.setOrientation(Qt.Horizontal)
+		else:
+			self.display_mode = 'Vertical'
+			self._widget.progress_bar_status.setOrientation(Qt.Vertical)

@@ -37,7 +37,7 @@ class SimpleSettingsDialog(QDialog):
 
 		self.group_area.layout().addWidget(line)
 
-	def add_combobox(self, name, options, title="", on_change=None):
+	def add_combobox(self, name, options, current, title="", on_change=None):
 		if title:
 			self.add_label(title)
 
@@ -47,17 +47,23 @@ class SimpleSettingsDialog(QDialog):
 		for op in options:
 			combo.addItem(op)
 
+		cur_ind = 0
+		if current in options:
+			cur_ind = options.index(current)
+		combo.setCurrentIndex(cur_ind)
+
 		if on_change is not None:
-			combo.currentIndexChanged.connect(on_change)
+			combo.activated.connect(on_change)
 
 		self.group_area.layout().addWidget(combo)
 
-	def add_combobox_empty(self, name, title):
+	def add_combobox_empty(self, name, title, curtext=""):
 		if title:
 			self.add_label(title)
 
 		combo = QComboBox()
 		combo.setObjectName(name)
+		combo.addItem(curtext)
 
 		self.group_area.layout().addWidget(combo)
 		self.empty_combo = combo
@@ -65,7 +71,7 @@ class SimpleSettingsDialog(QDialog):
 	def getKey(self,item):
 		return item[0]
 
-	def add_topic_list(self, name, title):
+	def add_topic_list(self, name, current, title):
 		topics = sorted(rospy.get_published_topics(), key=self.getKey)
 
 		self.topics = [["",""]]
@@ -76,11 +82,13 @@ class SimpleSettingsDialog(QDialog):
 		for t in self.topics:
 			topic_names.append(t[0])
 
-		self.add_combobox(name, topic_names, title, self.topic_selected)
+		self.add_combobox(name, topic_names, str(current), title, self.topic_selected)
 
 	def topic_selected(self, ind):
 		if ind is not 0:
 			#rospy.loginfo(self.topics[ind])
+			curtext = self.empty_combo.currentText()
+
 			connection_header =  self.topics[ind][1].split("/")
 			ros_pkg = connection_header[0] + ".msg"
 			msg_type = connection_header[1]
@@ -89,6 +97,12 @@ class SimpleSettingsDialog(QDialog):
 			self.empty_combo.clear()
 			for s in msg_class.__slots__:
 				self.empty_combo.addItem(s)
+
+			cur_ind = 0
+			if curtext in msg_class.__slots__:
+				cur_ind = msg_class.__slots__.index(curtext)
+			self.empty_combo.setCurrentIndex(cur_ind)
+
 
 	def get_settings(self):
 		"""Returns the combined settings from all settings groups as a list."""
