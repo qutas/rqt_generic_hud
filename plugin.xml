@@ -4,16 +4,13 @@
       A generic HUD to assist in quickly viewing specific message contents
     </description>
     <qtgui>
-      <!-- optional grouping...
       <group>
-        <label>Group</label>
+        <label>QUTAS Tools</label>
+        <icon type="theme">folder</icon>
+        <statustip>Plugins developed as part of the QUTAS Flight Stack.</statustip>
       </group>
-      <group>
-        <label>Subgroup</label>
-      </group>
-      -->
       <label>Generic HUD</label>
-      <icon type="theme">system-help</icon>
+      <icon type="theme">utilities-system-monitor</icon>
       <statustip>Heads up display for message data</statustip>
     </qtgui>
   </class>
