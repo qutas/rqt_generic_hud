@@ -96,6 +96,7 @@ class SimpleSettingsDialog(QDialog):
 
 			self.empty_combo.clear()
 			for s in msg_class.__slots__:
+				print(s)
 				self.empty_combo.addItem(s)
 
 			cur_ind = 0
