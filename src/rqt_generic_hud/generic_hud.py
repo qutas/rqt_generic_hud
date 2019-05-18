@@ -116,13 +116,24 @@ class GenericHUD(Plugin):
 
 		return topic_type, msg_class
 
+	def recursive_topic_content(self, msg_in, content):
+		attr = None
+		subcontent = content.split('/',1)
+
+		if len(subcontent) > 1:
+			attr = self.recursive_topic_content(getattr(msg_in, subcontent[0]), subcontent[1])
+		else:
+			attr = getattr(msg_in, content)
+
+		return attr
+
 	def sub_callback(self, msg_in):
 		val = 0.0
 
 		try:
-			val = float(getattr(msg_in, self.topic_content))
+			val = float(self.recursive_topic_content(msg_in, self.topic_content))
 		except AttributeError as e:
-			rospy.logwarn("AttributeError: " + "e")
+			rospy.logwarn("AttributeError: " + str(e))
 			self.sub.unregister()
 		except TypeError as e:
 			rospy.logwarn("Unable to display " + str(getattr(msg_in, self.topic_content).__class__.__name__) + " as a percentage")

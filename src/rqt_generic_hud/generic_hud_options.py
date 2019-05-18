@@ -8,6 +8,8 @@ from python_qt_binding import loadUi
 from python_qt_binding.QtCore import qWarning
 from python_qt_binding.QtWidgets import QDialog, QLabel, QLineEdit, QComboBox
 from rospkg.rospack import RosPack
+import roslib.message
+from rqt_py_common.topic_dict import TopicDict
 
 class SimpleSettingsDialog(QDialog):
 	"""Simple dialog that can show multiple settings groups and returns their combined results."""
@@ -86,24 +88,35 @@ class SimpleSettingsDialog(QDialog):
 
 	def topic_selected(self, ind):
 		if ind is not 0:
-			#rospy.loginfo(self.topics[ind])
 			curtext = self.empty_combo.currentText()
 
-			connection_header =  self.topics[ind][1].split("/")
-			ros_pkg = connection_header[0] + ".msg"
-			msg_type = connection_header[1]
-			msg_class = getattr(import_module(ros_pkg), msg_type)
+			msg_children = TopicDict().get_topics()[self.topics[ind][0]]["children"]
+			children_list = self.recursive_list_children(msg_children)
+			#print(children_list)
 
 			self.empty_combo.clear()
-			for s in msg_class.__slots__:
-				print(s)
-				self.empty_combo.addItem(s)
+			for c in children_list:
+				self.empty_combo.addItem(c)
 
 			cur_ind = 0
-			if curtext in msg_class.__slots__:
-				cur_ind = msg_class.__slots__.index(curtext)
+			if curtext in children_list:
+				cur_ind = children_list.index(curtext)
 			self.empty_combo.setCurrentIndex(cur_ind)
+		else:
+			self.empty_combo.clear()
 
+	def recursive_list_children(self, parents):
+		children = []
+
+		for child in parents.keys():
+			if parents[child]["children"]:
+				grandchildren = self.recursive_list_children(parents[child]["children"])
+				for grandchild in grandchildren:
+					children.append(child + "/" + grandchild)
+			else:
+				children.append(child)
+
+		return children
 
 	def get_settings(self):
 		"""Returns the combined settings from all settings groups as a list."""
